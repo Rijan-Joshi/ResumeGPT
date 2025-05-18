@@ -21,7 +21,12 @@ from reportlab.platypus import (
     Spacer,
     HRFlowable,
 )
-from . import resume_pdf_styles
+from . import (
+    resume_pdf_styles as classic_template,
+    # resume_modern_template as modern_template,
+    modern_template,
+    chronological_template,
+)
 
 
 class ResumePDFGenerator:
@@ -29,19 +34,28 @@ class ResumePDFGenerator:
     A class to generate a resume PDF from JSON data using the ReportLab library.
     """
 
-    def __init__(self):
+    TEMPLATES = {
+        "classic": classic_template,
+        "modern": modern_template,
+        "chronological": chronological_template,
+        # "minimal": minimal_template,
+    }
+
+    def __init__(self, template_name="classic"):
         """
         Initialize the ResumePDFGenerator by registering fonts.
         """
+        self.template_name = template_name
+        self.template = self.TEMPLATES.get(template_name, classic_template)
         self._register_fonts()
 
     def _register_fonts(self):
         """
         Register fonts for use in the PDF.
         """
-        for style, path in resume_pdf_styles.FONT_PATHS.items():
+        for style, path in self.template.FONT_PATHS.items():
             pdfmetrics.registerFont(
-                ttfonts.TTFont(resume_pdf_styles.FONT_NAMES[style], path)
+                ttfonts.TTFont(self.template.FONT_NAMES[style], path)
             )
 
     def _append_section_table_style(self, table_styles, row_index):
@@ -67,7 +81,7 @@ class ResumePDFGenerator:
         row_index,
         content_style_map,
         span=False,
-        padding=resume_pdf_styles.DEFAULT_PADDING,
+        padding=None,
         bullet_point=None,
     ):
         """
@@ -83,6 +97,9 @@ class ResumePDFGenerator:
             bullet_point (str, optional): The bullet point to prepend to the content.
             spacer_height (int, optional): The height of the spacer to add after the row. Defaults to None.
         """
+        if padding is None:
+            padding = self.template.DEFAULT_PADDING
+
         if bullet_point:
             table_data.append(
                 [
@@ -122,7 +139,7 @@ class ResumePDFGenerator:
             table_styles=table_styles,
             row_index=row_index,
             content_style_map=[
-                ("Experience", resume_pdf_styles.PARAGRAPH_STYLES["section"])
+                ("Experience", self.template.PARAGRAPH_STYLES["section"])
             ],
             span=True,
         )
@@ -139,11 +156,11 @@ class ResumePDFGenerator:
                     content_style_map=[
                         (
                             job["titles"][0]["name"],
-                            resume_pdf_styles.PARAGRAPH_STYLES["company_title"],
+                            self.template.PARAGRAPH_STYLES["company_title"],
                         ),
                         (
                             duration,
-                            resume_pdf_styles.PARAGRAPH_STYLES["company_duration"],
+                            self.template.PARAGRAPH_STYLES["company_duration"],
                         ),
                     ],
                 )
@@ -156,11 +173,11 @@ class ResumePDFGenerator:
                     content_style_map=[
                         (
                             job["company"],
-                            resume_pdf_styles.PARAGRAPH_STYLES["company_heading"],
+                            self.template.PARAGRAPH_STYLES["company_heading"],
                         ),
                         (
                             duration,
-                            resume_pdf_styles.PARAGRAPH_STYLES["company_duration"],
+                            self.template.PARAGRAPH_STYLES["company_duration"],
                         ),
                     ],
                 )
@@ -172,11 +189,11 @@ class ResumePDFGenerator:
                     content_style_map=[
                         (
                             job["titles"][0]["name"],
-                            resume_pdf_styles.PARAGRAPH_STYLES["company_title"],
+                            self.template.PARAGRAPH_STYLES["company_title"],
                         ),
                         (
                             job["location"],
-                            resume_pdf_styles.PARAGRAPH_STYLES["company_location"],
+                            self.template.PARAGRAPH_STYLES["company_location"],
                         ),
                     ],
                 )
@@ -184,9 +201,9 @@ class ResumePDFGenerator:
             for i, bullet_point in enumerate(job["highlights"]):
                 bullet_point = bullet_point.replace("'", "").replace('"', "").strip()
                 style = (
-                    resume_pdf_styles.PARAGRAPH_STYLES["last_bullet_point"]
+                    self.template.PARAGRAPH_STYLES["last_bullet_point"]
                     if i == len(job["highlights"]) - 1
-                    else resume_pdf_styles.PARAGRAPH_STYLES["bullet_points"]
+                    else self.template.PARAGRAPH_STYLES["bullet_points"]
                 )
                 padding = (0, 1)
                 if i == len(job["highlights"]) - 1:
@@ -222,9 +239,7 @@ class ResumePDFGenerator:
             table_data=table_data,
             table_styles=table_styles,
             row_index=row_index,
-            content_style_map=[
-                ("Projects", resume_pdf_styles.PARAGRAPH_STYLES["section"])
-            ],
+            content_style_map=[("Projects", self.template.PARAGRAPH_STYLES["section"])],
             span=True,
         )
         self._append_section_table_style(table_styles, row_index - 1)
@@ -240,11 +255,11 @@ class ResumePDFGenerator:
             if project["show_link"]:
                 if project["hyperlink"]:
                     hyperlink_text = '<a href="%s">%s</a>' % (raw_link, clean_link)
-                    link_style = resume_pdf_styles.PARAGRAPH_STYLES["link"]
+                    link_style = self.template.PARAGRAPH_STYLES["link"]
                 else:
                     hyperlink_text = clean_link
-                    link_style = resume_pdf_styles.PARAGRAPH_STYLES["link-no-hyperlink"]
-                heading_style = resume_pdf_styles.PARAGRAPH_STYLES["company_heading"]
+                    link_style = self.template.PARAGRAPH_STYLES["link-no-hyperlink"]
+                heading_style = self.template.PARAGRAPH_STYLES["company_heading"]
                 combined_style = ParagraphStyle(
                     "combined_project_style",
                     parent=heading_style,
@@ -267,7 +282,7 @@ class ResumePDFGenerator:
                         (paragraph_text, combined_style),
                         (
                             project["date"],
-                            resume_pdf_styles.PARAGRAPH_STYLES["company_duration"],
+                            self.template.PARAGRAPH_STYLES["company_duration"],
                         ),
                     ],
                 )
@@ -279,11 +294,11 @@ class ResumePDFGenerator:
                     content_style_map=[
                         (
                             project_name,
-                            resume_pdf_styles.PARAGRAPH_STYLES["company_heading"],
+                            self.template.PARAGRAPH_STYLES["company_heading"],
                         ),
                         (
                             project["date"],
-                            resume_pdf_styles.PARAGRAPH_STYLES["company_duration"],
+                            self.template.PARAGRAPH_STYLES["company_duration"],
                         ),
                     ],
                 )
@@ -291,9 +306,9 @@ class ResumePDFGenerator:
             for i, bullet_point in enumerate(project["highlights"]):
                 bullet_point = bullet_point.replace("'", "").replace('"', "").strip()
                 style = (
-                    resume_pdf_styles.PARAGRAPH_STYLES["last_bullet_point"]
+                    self.template.PARAGRAPH_STYLES["last_bullet_point"]
                     if i == len(project["highlights"]) - 1
-                    else resume_pdf_styles.PARAGRAPH_STYLES["bullet_points"]
+                    else self.template.PARAGRAPH_STYLES["bullet_points"]
                 )
                 padding = (0, 1)
                 if i == len(project["highlights"]) - 1:
@@ -330,7 +345,7 @@ class ResumePDFGenerator:
             table_styles=table_styles,
             row_index=row_index,
             content_style_map=[
-                ("Education", resume_pdf_styles.PARAGRAPH_STYLES["section"])
+                ("Education", self.template.PARAGRAPH_STYLES["section"])
             ],
             span=True,
         )
@@ -344,8 +359,8 @@ class ResumePDFGenerator:
                 row_index=row_index,
                 content_style_map=[
                     (
-                        f"<font name='{resume_pdf_styles.FONT_NAMES['bold']}'>{edu['school']}</font>, {degrees}",
-                        resume_pdf_styles.PARAGRAPH_STYLES["education"],
+                        f"<font name='{self.template.FONT_NAMES['bold']}'>{edu['school']}</font>, {degrees}",
+                        self.template.PARAGRAPH_STYLES["education"],
                     )
                 ],
                 span=True,
@@ -366,9 +381,7 @@ class ResumePDFGenerator:
             table_data=table_data,
             table_styles=table_styles,
             row_index=row_index,
-            content_style_map=[
-                ("Skills", resume_pdf_styles.PARAGRAPH_STYLES["section"])
-            ],
+            content_style_map=[("Skills", self.template.PARAGRAPH_STYLES["section"])],
             span=True,
         )
         self._append_section_table_style(table_styles, row_index - 1)
@@ -378,13 +391,13 @@ class ResumePDFGenerator:
             skill_type = group[group_keys[0]]
             skills_list = group[group_keys[1]]
             skills_str = ", ".join(skills_list)
-            formatted_skills = f"<font name='{resume_pdf_styles.FONT_NAMES['bold']}'>{skill_type}</font>: {skills_str}"
+            formatted_skills = f"<font name='{self.template.FONT_NAMES['bold']}'>{skill_type}</font>: {skills_str}"
             row_index = self._add_table_row(
                 table_data=table_data,
                 table_styles=table_styles,
                 row_index=row_index,
                 content_style_map=[
-                    (formatted_skills, resume_pdf_styles.PARAGRAPH_STYLES["skills"])
+                    (formatted_skills, self.template.PARAGRAPH_STYLES["skills"])
                 ],
                 span=True,
                 padding=(2, 2),
@@ -415,108 +428,128 @@ class ResumePDFGenerator:
 
         address = data["basic"]["address"]
         info += f" | {address}"
-        doc, pdf_location = resume_pdf_styles.generate_doc_template(
-            name, job_data_location
-        )
-        table_data = []
-        table_styles = []
-        row_index = 0
+        doc, pdf_location = self.template.generate_doc_template(name, job_data_location)
 
-        if data.get("debug", False):
-            table_styles.append(resume_pdf_styles.DEBUG_STYLE)
+        if self.template_name == "modern" and hasattr(
+            self.template, "build_modern_resume"
+        ):
+            story = self.template.build_modern_resume(doc, data)
+            doc.build(story)
+            return pdf_location
+        elif self.template_name == "chronological" and hasattr(
+            self.template, "build_timeline_resume"
+        ):
+            story = self.template.build_timeline_resume(doc, data)
+            doc.build(story)
+            return pdf_location
 
-        table_styles.extend(resume_pdf_styles.DOCUMENT_ALIGNMENT)
+        else:
+            table_data = []
+            table_styles = []
+            row_index = 0
 
-        # Add name and contact information
-        row_index = self._add_table_row(
-            table_data=table_data,
-            table_styles=table_styles,
-            row_index=row_index,
-            content_style_map=[(name, resume_pdf_styles.PARAGRAPH_STYLES["name"])],
-            span=True,
-        )
+            if data.get("debug", False):
+                table_styles.append(self.template.DEBUG_STYLE)
 
-        row_index = self._add_table_row(
-            table_data=table_data,
-            table_styles=table_styles,
-            row_index=row_index,
-            content_style_map=[
-                (
-                    info,
-                    resume_pdf_styles.PARAGRAPH_STYLES["contact"],
-                )
-            ],
-            span=True,
-        )
+            table_styles.extend(self.template.DOCUMENT_ALIGNMENT)
 
-        # Add objective
-        row_index = self._add_table_row(
-            table_data=table_data,
-            table_styles=table_styles,
-            row_index=row_index,
-            content_style_map=[
-                ("Objective", resume_pdf_styles.PARAGRAPH_STYLES["section"])
-            ],
-            span=True,
-        )
-        self._append_section_table_style(table_styles, row_index - 1)
+            # Add name and contact information
+            row_index = self._add_table_row(
+                table_data=table_data,
+                table_styles=table_styles,
+                row_index=row_index,
+                content_style_map=[(name, self.template.PARAGRAPH_STYLES["name"])],
+                span=True,
+            )
 
-        row_index = self._add_table_row(
-            table_data=table_data,
-            table_styles=table_styles,
-            row_index=row_index,
-            content_style_map=[
-                (data["objective"], resume_pdf_styles.PARAGRAPH_STYLES["objective"])
-            ],
-            span=True,
-        )
+            row_index = self._add_table_row(
+                table_data=table_data,
+                table_styles=table_styles,
+                row_index=row_index,
+                content_style_map=[
+                    (
+                        info,
+                        self.template.PARAGRAPH_STYLES["contact"],
+                    )
+                ],
+                span=True,
+            )
 
-        # Add experience
-        row_index = self.add_experiences(
-            table_data=table_data,
-            table_styles=table_styles,
-            row_index=row_index,
-            experiences=data["experiences"],
-        )
-        # Add projects
-        row_index = self.add_projects(
-            table_data=table_data,
-            table_styles=table_styles,
-            row_index=row_index,
-            projects=data["projects"],
-        )
+            # Add objective
+            row_index = self._add_table_row(
+                table_data=table_data,
+                table_styles=table_styles,
+                row_index=row_index,
+                content_style_map=[
+                    ("Objective", self.template.PARAGRAPH_STYLES["section"])
+                ],
+                span=True,
+            )
+            self._append_section_table_style(table_styles, row_index - 1)
 
-        # Add education
-        row_index = self.add_education(
-            table_data=table_data,
-            table_styles=table_styles,
-            row_index=row_index,
-            education=data["education"],
-        )
+            row_index = self._add_table_row(
+                table_data=table_data,
+                table_styles=table_styles,
+                row_index=row_index,
+                content_style_map=[
+                    (data["objective"], self.template.PARAGRAPH_STYLES["objective"])
+                ],
+                span=True,
+            )
 
-        # Add skills
-        row_index = self.add_skills(
-            table_data=table_data,
-            table_styles=table_styles,
-            row_index=row_index,
-            skills=data["skills"],
-        )
+            # Add experience
+            row_index = self.add_experiences(
+                table_data=table_data,
+                table_styles=table_styles,
+                row_index=row_index,
+                experiences=data["experiences"],
+            )
+            # Add projects
+            row_index = self.add_projects(
+                table_data=table_data,
+                table_styles=table_styles,
+                row_index=row_index,
+                projects=data["projects"],
+            )
 
-        table = Table(
-            table_data,
-            colWidths=[
-                resume_pdf_styles.FULL_COLUMN_WIDTH * 0.75,
-                resume_pdf_styles.FULL_COLUMN_WIDTH * 0.3,
-            ],
-            spaceBefore=0,
-            spaceAfter=0,
-        )
-        table.setStyle(TableStyle(table_styles))
+            # Add education
+            row_index = self.add_education(
+                table_data=table_data,
+                table_styles=table_styles,
+                row_index=row_index,
+                education=data["education"],
+            )
 
-        doc.build([table])
-        return pdf_location
+            # Add skills
+            row_index = self.add_skills(
+                table_data=table_data,
+                table_styles=table_styles,
+                row_index=row_index,
+                skills=data["skills"],
+            )
 
-    def generate_pdf_from_resume_yaml(self, yaml_path, job_data_location):
+            left_col_width = self.template.FULL_COLUMN_WIDTH * 0.75
+            right_col_width = self.template.FULL_COLUMN_WIDTH * 0.25
+
+            # For modern template, adjust column widths
+            if self.template_name == "modern":
+                left_col_width = self.template.FULL_COLUMN_WIDTH * 0.7
+                right_col_width = self.template.FULL_COLUMN_WIDTH * 0.3
+
+            table = Table(
+                table_data,
+                colWidths=[left_col_width, right_col_width],
+                spaceBefore=0,
+                spaceAfter=0,
+            )
+            table.setStyle(TableStyle(table_styles))
+
+            doc.build([table])
+            return pdf_location
+
+    def generate_pdf_from_resume_yaml(
+        self, yaml_path, job_data_location, template_name=None
+    ):
         """
         Generate a resume PDF from YAML data.
 
@@ -524,6 +557,25 @@ class ResumePDFGenerator:
             yaml_path (str): The path to the YAML file containing resume information.
             job_data_location (str): The path where the PDF will be saved.
         """
-        return self.generate_resume(
-            job_data_location, utils.read_yaml(filename=yaml_path)
-        )
+        if template_name and template_name in self.TEMPLATES:
+            old_template = self.template_name
+            self.template_name = template_name
+            self.template = self.TEMPLATES[template_name]
+            self._register_fonts()
+
+            # Generate the resume
+            result = self.generate_resume(
+                job_data_location, utils.read_yaml(filename=yaml_path)
+            )
+
+            # Restore original template
+            self.template_name = old_template
+            self.template = self.TEMPLATES[old_template]
+            self._register_fonts()
+
+            return result
+        else:
+            # Use current template
+            return self.generate_resume(
+                job_data_location, utils.read_yaml(filename=yaml_path)
+            )
