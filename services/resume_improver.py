@@ -30,7 +30,13 @@ from .background_runner import BackgroundRunner
 
 class ResumeImprover:
 
-    def __init__(self, url, resume_location=None, llm_kwargs: dict = None):
+    def __init__(
+        self,
+        url=None,
+        job_description=None,
+        resume_location=None,
+        llm_kwargs: dict = None,
+    ):
         """Initialize ResumeImprover with the job post URL and optional resume location.
 
         Args:
@@ -51,7 +57,8 @@ class ResumeImprover:
         self.job_data_location = None
         self.yaml_loc = None
         self.url = url
-        self.download_and_parse_job_post()
+        self.job_description = job_description
+        self.download_and_parse_job_post(job_description=self.job_description)
         self.resume_location = resume_location or config.DEFAULT_RESUME_PATH
         self._update_resume_fields()
 
@@ -135,7 +142,7 @@ class ResumeImprover:
         config.logger.error(f"Exceeded maximum retries for URL {self.url}")
         return False
 
-    def download_and_parse_job_post(self, url=None):
+    def download_and_parse_job_post(self, url=None, job_description=None):
         """Download and parse the job post from the provided URL.
 
         Args:
@@ -143,8 +150,11 @@ class ResumeImprover:
         """
         if url:
             self.url = url
-        self._download_url()
-        self._extract_html_data()
+            self._download_url()
+            self._extract_html_data()
+        else:
+            self.job_post_raw = job_description
+
         self.job_post = JobPost(self.job_post_raw)
         self.parsed_job = self.job_post.parse_job_post(verbose=False)
         try:
