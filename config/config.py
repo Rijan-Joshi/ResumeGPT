@@ -28,8 +28,8 @@ REQUESTS_HEADERS = {
 CHAT_MODEL = ChatOpenAI
 MODEL_NAME = "gpt-4o"
 TEMPERATURE = 0.3
-OPEN_FILE_COMMAND = "cursor -r"
-#OPEN_FILE_COMMAND = "code -r"
+# OPEN_FILE_COMMAND = "cursor -r"
+OPEN_FILE_COMMAND = "start"  # For Windows
 MAX_CONCURRENT_WORKERS = 4
 MAX_RETRIES = 3
 BACKOFF_FACTOR = 5
@@ -45,4 +45,3 @@ def ensure_openai_api_key():
 
 
 ensure_openai_api_key()
-

@@ -1,5 +1,5 @@
 import os
-from .. import config
+import config
 
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4
@@ -92,15 +92,15 @@ PARAGRAPH_STYLES = {
         leading=12,
     ),
     "link": ParagraphStyle(
-        name='Hyperlink',
+        name="Hyperlink",
         fontName=FONT_NAMES["regular"],
         fontSize=11,
-        parent=sample_style_sheets['BodyText'],
+        parent=sample_style_sheets["BodyText"],
         textColor=colors.blue,
         underline=True,
     ),
     "link-no-hyperlink": ParagraphStyle(
-        name='Hyperlink',
+        name="Hyperlink",
         fontName=FONT_NAMES["regular"],
         fontSize=11,
     ),

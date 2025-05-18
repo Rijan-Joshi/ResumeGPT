@@ -9,22 +9,22 @@ import requests
 from langchain.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableSequence
 from langchain_core.output_parsers import StrOutputParser
-from ..models.resume import (
+from models.resume import (
     ResumeImproverOutput,
     ResumeSkillsMatcherOutput,
     ResumeSummarizerOutput,
     ResumeSectionHighlighterOutput,
 )
-from .. import utils
-from .. import config
+import utils
+import config
 from .langchain_helpers import *
-from ..prompts import Prompts
-from ..models.job_post import JobPost
-from ..pdf_generation import ResumePDFGenerator
+from prompts import Prompts
+from models.job_post import JobPost
+from pdf_generation import ResumePDFGenerator
 import concurrent.futures
 from fp.fp import FreeProxy
 import time
-from ..config import config
+from config import config
 from .background_runner import BackgroundRunner
 
 
@@ -228,7 +228,8 @@ class ResumeImprover:
         utils.write_yaml(resume_dict, filename=self.yaml_loc)
         self.resume_yaml = utils.read_yaml(filename=self.yaml_loc)
         if auto_open:
-            subprocess.run(config.OPEN_FILE_COMMAND.split(" ") + [self.yaml_loc])
+            # subprocess.run(config.OPEN_FILE_COMMAND.split(" ") + [self.yaml_loc])
+            subprocess.run(f"start {self.yaml_loc}", shell=True)
         while manual_review and utils.read_yaml(filename=self.yaml_loc)["editing"]:
             time.sleep(5)
         config.logger.info("Saving PDF")
