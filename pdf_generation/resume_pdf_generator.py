@@ -25,7 +25,17 @@ from . import (
     resume_pdf_styles as classic_template,
     # resume_modern_template as modern_template,
     modern_template,
+    resume_modern_template as modern_template2,
     chronological_template,
+    professional_template,
+    elegant_template,
+    minimal_template,
+    technical_template,
+    try1,
+    template2,
+    professional_template2,
+    professional_template3,
+    technical_expert_template,
 )
 
 
@@ -38,7 +48,16 @@ class ResumePDFGenerator:
         "classic": classic_template,
         "modern": modern_template,
         "chronological": chronological_template,
-        # "minimal": minimal_template,
+        "modern2": modern_template2,
+        "professional": professional_template,
+        "elegant": elegant_template,
+        "minimal": minimal_template,
+        "technical": technical_template,
+        "try1": try1,
+        "template2": template2,
+        "professional2": professional_template2,
+        "professional3": professional_template3,
+        "technical_expert": technical_expert_template,
     }
 
     def __init__(self, template_name="classic"):
@@ -442,7 +461,61 @@ class ResumePDFGenerator:
             story = self.template.build_timeline_resume(doc, data)
             doc.build(story)
             return pdf_location
+        elif self.template_name == "professional" and hasattr(
+            self.template, "build_professional_resume"
+        ):
+            story = self.template.build_professional_resume(doc, data)
+            doc.build(story)
+            return pdf_location
 
+        elif self.template_name == "elegant" and hasattr(
+            self.template, "build_elegant_resume"
+        ):
+            story = self.template.build_elegant_resume(doc, data)
+            doc.build(story)
+            return pdf_location
+        elif self.template_name == "minimal" and hasattr(
+            self.template, "build_minimal_ats_resume"
+        ):
+            story = self.template.build_minimal_ats_resume(doc, data)
+            doc.build(story)
+            return pdf_location
+        elif self.template_name == "technical" and hasattr(
+            self.template, "build_technical_resume"
+        ):
+            story = self.template.build_technical_resume(doc, data)
+            doc.build(story)
+            return pdf_location
+        elif self.template_name == "try1" and hasattr(
+            self.template, "build_modern_resume"
+        ):
+            story = self.template.build_modern_resume(doc, data)
+            doc.build(story)
+            return pdf_location
+        elif self.template_name == "template2" and hasattr(
+            self.template, "build_template_resume"
+        ):
+            story = self.template.build_template_resume(doc, data)
+            doc.build(story)
+            return pdf_location
+        elif self.template_name == "professional2" and hasattr(
+            self.template, "build_professional_ats_resume"
+        ):
+            story = self.template.build_professional_ats_resume(doc, data)
+            doc.build(story)
+            return pdf_location
+        elif self.template_name == "professional3" and hasattr(
+            self.template, "build_professional_ats_resume"
+        ):
+            story = self.template.build_professional_ats_resume(doc, data)
+            doc.build(story)
+            return pdf_location
+        elif self.template_name == "technical_expert" and hasattr(
+            self.template, "build_technical_expert_resume"
+        ):
+            story = self.template.build_technical_expert_resume(doc, data)
+            doc.build(story)
+            return pdf_location
         else:
             table_data = []
             table_styles = []

@@ -29,7 +29,7 @@ def generate_doc_template(name, job_data_location):
     Returns:
         tuple: A tuple containing the document template for the resume PDF and the PDF location.
     """
-    author_name_formatted = name.replace(" ", "_") + "_modern_resume"
+    author_name_formatted = name.replace(" ", "_") + "_modern_resume_2"
     pdf_location = os.path.join(job_data_location, f"{author_name_formatted}.pdf")
     doc = SimpleDocTemplate(
         pdf_location,
