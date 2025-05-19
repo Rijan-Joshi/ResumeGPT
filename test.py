@@ -78,7 +78,7 @@ technical_skills:
 - Vue.js
 """
 
-resume_improver = ResumeImprover(job_description=job_description)
+resume_improver = ResumeImprover(url=url)
 resume_improver.create_draft_tailored_resume()
 
 

@@ -6,3 +6,4 @@ data/*
 .aider.*
 .plandex/*
 .vscode/*
+venv
