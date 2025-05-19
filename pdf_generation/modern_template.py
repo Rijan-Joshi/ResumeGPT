@@ -118,7 +118,7 @@ PARAGRAPH_STYLES = {
         alignment=TA_LEFT,
         leading=14,
         spaceBefore=10,
-        spaceAfter=6,
+        spaceAfter=16,
         leftIndent=10,
     ),
     "objective": ParagraphStyle(
@@ -128,7 +128,8 @@ PARAGRAPH_STYLES = {
         leading=14,
         alignment=TA_JUSTIFY,
         textColor=COLORS["dark"],
-        spaceAfter=8,
+        spaceBefore=8,
+        spaceAfter=10,
     ),
     "company_heading": ParagraphStyle(
         name="modern_company_heading",
@@ -194,6 +195,7 @@ PARAGRAPH_STYLES = {
         fontSize=10,
         leading=14,
         textColor=COLORS["dark"],
+        spaceAfter=10,
     ),
     "skill_category": ParagraphStyle(
         name="modern_skill_category",
@@ -283,6 +285,7 @@ def build_modern_resume(doc, data):
         ),
     )
     story.append(header)
+    story.append(Spacer(1, 12))
 
     # Create modern section header with background color
     def create_section_header(title):
@@ -297,6 +300,7 @@ def build_modern_resume(doc, data):
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
                     ("LEFTPADDING", (0, 0), (-1, -1), 0),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
                 ]
             ),
         )
@@ -360,6 +364,18 @@ def build_modern_resume(doc, data):
                 ),
             )
             story.append(title_table)
+            story.append(
+                HRFlowable(
+                    width="100%",
+                    thickness=0.5,  # Thinner line for subtlety
+                    color=COLORS[
+                        "secondary"
+                    ],  # Using secondary color for subtle effect
+                    spaceBefore=2,
+                    spaceAfter=4,
+                    hAlign="CENTER",
+                )
+            )
         else:
             # Just show title and duration
             job_table_data = [
@@ -384,7 +400,18 @@ def build_modern_resume(doc, data):
                     ]
                 ),
             )
+
             story.append(job_table)
+            story.append(
+                HRFlowable(
+                    width="100%",
+                    thickness=0.5,
+                    color=COLORS["secondary"],
+                    spaceBefore=2,
+                    spaceAfter=4,
+                    hAlign="CENTER",
+                )
+            )
 
         # Job highlights (bullet points)
         for i, bullet_point in enumerate(job["highlights"]):
@@ -445,6 +472,17 @@ def build_modern_resume(doc, data):
         )
         story.append(project_table)
 
+        story.append(
+            HRFlowable(
+                width="100%",
+                thickness=0.5,
+                color=COLORS["secondary"],
+                spaceBefore=2,
+                spaceAfter=4,
+                hAlign="CENTER",
+            )
+        )
+
         # Project highlights (bullet points)
         for i, bullet_point in enumerate(project["highlights"]):
             bullet_point = bullet_point.replace("'", "").replace('"', "").strip()
@@ -455,11 +493,11 @@ def build_modern_resume(doc, data):
             )
             story.append(Paragraph(f"• {bullet_point}", style))
 
-        story.append(Spacer(1, 8))
+        story.append(Spacer(1, 12))
 
     # Skills section
     story.append(create_section_header("SKILLS"))
-
+    story.append(Spacer(1, 4))
     skills_data = []
     skills_row = []
     col_count = 0
@@ -469,7 +507,8 @@ def build_modern_resume(doc, data):
         skill_type = group[group_keys[0]]
         skills_list = group[group_keys[1]]
 
-        skill_text = f"<b>{skill_type}</b>: {', '.join(skills_list)}"
+        primary_color = "#1A237E"  # Use the same hex value directly
+        skill_text = f'<b><font color="{primary_color}">{skill_type}</font></b>: {", ".join(skills_list)}'
 
         skills_row.append(Paragraph(skill_text, PARAGRAPH_STYLES["skills"]))
         col_count += 1
@@ -503,8 +542,10 @@ def build_modern_resume(doc, data):
         )
         story.append(skills_table)
 
-    # Education section
+        # Education section
+    story.append(Spacer(1, 8))
     story.append(create_section_header("EDUCATION"))
+    story.append(Spacer(1, 8))
 
     for edu in data["education"]:
         school = edu["school"]

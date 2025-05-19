@@ -20,7 +20,7 @@ COLORS = {
 
 def generate_doc_template(name, job_data_location):
     """
-    Generate and return a SimpleDocTemplate for a modern resume PDF.
+    Generate and return a SimpleDocTemplate for a modern resum'w e PDF.
 
     Args:
         name (str): The name of the resume author.
@@ -153,6 +153,7 @@ PARAGRAPH_STYLES = {
         leading=14,
         alignment=TA_CENTER,
         textColor=COLORS["secondary"],
+        spaceAfter=15,
     ),
     "section": ParagraphStyle(
         name="modern_section",
@@ -171,7 +172,7 @@ PARAGRAPH_STYLES = {
         leading=14,
         alignment=TA_JUSTIFY,
         textColor=COLORS["dark"],
-        spaceAfter=8,
+        spaceAfter=10,
     ),
     "company_heading": ParagraphStyle(
         name="modern_company_heading",
