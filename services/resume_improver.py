@@ -148,12 +148,13 @@ class ResumeImprover:
         Args:
             url (str, optional): The URL of the job post. Defaults to None.
         """
-        if url:
-            self.url = url
+        if self.url:
             self._download_url()
             self._extract_html_data()
-        else:
+        elif self.job_description:
             self.job_post_raw = job_description
+        else:
+            raise ValueError("Either url or job_description must be provided")
 
         self.job_post = JobPost(self.job_post_raw)
         self.parsed_job = self.job_post.parse_job_post(verbose=False)

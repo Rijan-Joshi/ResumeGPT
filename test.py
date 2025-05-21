@@ -82,8 +82,8 @@ resume_improver = ResumeImprover(url=url)
 resume_improver.create_draft_tailored_resume()
 
 
-pdf_generator = ResumePDFGenerator()
-pdf_generator.generate_resume(
-    "resume",
-    utils.read_yaml(filename="data/Website_Toolbox_Sr._Software_Engineer/resume.yaml"),
-)
+# pdf_generator = ResumePDFGenerator()
+# pdf_generator.generate_resume(
+#     "resume",
+#     utils.read_yaml(filename="data/Website_Toolbox_Sr._Software_Engineer/resume.yaml"),
+# )
