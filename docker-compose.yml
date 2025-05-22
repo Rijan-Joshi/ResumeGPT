@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: backend
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      DOCKER_CONTAINER: "true"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./resume:/app/resume
+    restart: always
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: frontend
+    environment:
+      DOCKER_CONTAINER: "true"
+    ports:
+      - "8501:8501"
+    depends_on:
+      - backend
+    restart: always
+    

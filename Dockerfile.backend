@@ -1,0 +1,37 @@
+# Use Python 3.12 slim-buster base image
+FROM python:3.12-slim
+
+
+# Set environment variables for non-interactive execution
+ENV PYTHONUNBUFFERED 1
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Copy the core FastAPI application file and its dependencies
+COPY app.py .
+COPY config/ ./config/
+COPY models/ ./models/
+COPY pdf_generation/ ./pdf_generation/
+COPY prompts/ ./prompts/
+COPY services/ ./services/
+COPY utils/ ./utils/
+COPY pdf2yaml.py .
+
+# Copy backend requirements.txt from the root, install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Create and copy the data directory, including default resume
+RUN mkdir -p /app/data
+COPY data/ /app/data/
+
+# Copy resources/fonts needed for PDF generation
+RUN mkdir -p /app/resources/fonts
+COPY resources/fonts/ /app/resources/fonts/
+
+# Expose the port FastAPI runs on
+EXPOSE 8000
+
+# Command to run the FastAPI application with Uvicorn
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

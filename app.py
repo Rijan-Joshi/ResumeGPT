@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response # Import Response
 from typing import Optional
 import os
 import tempfile
@@ -9,7 +9,7 @@ from services.resume_improver import ResumeImprover
 from pdf_generation.resume_pdf_generator import ResumePDFGenerator
 from config import config
 from config.config import logger
-import time  # Added for timing measurements
+import time
 
 # Import our PDF to YAML converter used OpenAI to convert resumes
 from pdf2yaml import OpenAIPDFToYAMLConverter
@@ -36,79 +36,74 @@ async def process_resume(
     """
     1. Upload and convert resume to YAML (if provided)
     2. Generate tailored resume based on job details
-    
+
     - If resume_file is provided, it will be converted to YAML using OpenAI
     - If resume_file is not provided, the default resume from config will be used
     - Either job_url or job_description must be provided
     """
+    temp_pdf_path = None # Initialize to None for cleanup
+    yaml_conversion_time = 0.0 # Initialize conversion time
+
     try:
-        
-        start_time_pdf = time.time()
-        
-        if "OPENAI_API_KEY" not in os.environ:
-            logger.info(
-                "OPENAI_API_KEY not found in environment. Api key will be taken from the FastAPI endpoint"
-            )
-            os.environ["OPENAI_API_KEY"] = api_key
-        
+        start_time_total = time.time() # Changed to start_time_total for clarity
+
+        # API Key handling
+        if not api_key:
+            # If not provided in form, try environment variable
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                # Only raise error if it's actually needed (i.e., for PDF conversion)
+                # or if the default resume also relies on it later.
+                # For now, it's checked when resume_file is processed.
+                pass
+
         # Validate job input
         if not job_url and not job_description:
             raise HTTPException(status_code=400, detail="Either job_url or job_description must be provided")
-        
+
         # Determine which resume to use
-        resume_path = config.DEFAULT_RESUME_PATH  # currently this is pointing to data/sample_resume.yaml
-        temp_pdf_path = None
-        
-        # Process uploaded resume if provided
+        resume_path = config.DEFAULT_RESUME_PATH
         if resume_file:
-            # Get API key from form or environment
+            # API key is definitively required for PDF conversion
             if not api_key:
-                api_key = os.environ.get("OPENAI_API_KEY")
-                if not api_key:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail="OpenAI API key is required to process resume. Either provide it in the form or set OPENAI_API_KEY environment variable."
-                    )
-            
+                raise HTTPException(
+                    status_code=400,
+                    detail="OpenAI API key is required to process an uploaded resume. Please provide it in the form or set OPENAI_API_KEY environment variable."
+                )
+
             # Check if the uploaded file is a PDF
             if not resume_file.filename.lower().endswith('.pdf'):
                 raise HTTPException(status_code=400, detail="Uploaded file must be a PDF")
-            
+
             # Create a temporary file to store the uploaded PDF
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_pdf:
-                # Read the uploaded file content
                 content = await resume_file.read()
-                # Write content to temporary file
                 temp_pdf.write(content)
                 temp_pdf_path = temp_pdf.name
-            
+
             try:
-                yaml_filename = f"sample_resume.yaml"  # using the name same as the default path name, we can change this later
+                yaml_filename = f"uploaded_resume.yaml" # Use a distinct name for uploaded resume YAML
                 yaml_path = os.path.join(data_dir, yaml_filename)
-                
-                # Initialize the converter with the provided API key
+
                 converter = OpenAIPDFToYAMLConverter(api_key=api_key)
-                
-                # Convert the PDF to YAML and measure time
+
                 start_time_yaml = time.time()
                 success = converter.convert_pdf_to_yaml(temp_pdf_path, yaml_path)
                 end_time_yaml = time.time()
                 yaml_conversion_time = end_time_yaml - start_time_yaml
                 logger.info(f"PDF to YAML conversion took {yaml_conversion_time:.2f} seconds")
-                
+
                 if not success:
                     raise HTTPException(
-                        status_code=500, 
+                        status_code=500,
                         detail="Failed to convert PDF to YAML. Check server logs for details."
                     )
-                
-                # Update resume path to use the converted YAML
                 resume_path = yaml_path
-                
+
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Error processing uploaded resume: {str(e)}")
-        
-        # Initialize ResumeImprover with the appropriate resume location
+
+        # Initialize ResumeImprover
         resume_improver = ResumeImprover(
             url=job_url,
             job_description=job_description,
@@ -130,47 +125,53 @@ async def process_resume(
         os.makedirs(output_dir, exist_ok=True)
 
         # Read the generated resume YAML
-        yaml_path = resume_improver.yaml_loc
-        if not os.path.exists(yaml_path):
-            raise FileNotFoundError(f"Resume YAML not found at {yaml_path}")
+        yaml_path_for_pdf = resume_improver.yaml_loc # Use the path where the final tailored YAML is
+        if not os.path.exists(yaml_path_for_pdf):
+            raise FileNotFoundError(f"Tailored resume YAML not found at {yaml_path_for_pdf}")
 
-        resume_data = utils.read_yaml(filename=yaml_path)
+        resume_data = utils.read_yaml(filename=yaml_path_for_pdf)
 
-       
-        
         pdf_location = pdf_generator.generate_resume(output_dir, resume_data)
-      
-        
-        # Add cleanup of temporary files to background tasks
-        if temp_pdf_path:
-            background_tasks.add_task(os.unlink, temp_pdf_path)
 
-        
-        end_time_pdf = time.time()
-        Total_Time = end_time_pdf - start_time_pdf
-        logger.info(f"Total Time {Total_Time:.2f} seconds")
-        # Return the PDF as a downloadable file
+        end_time_total = time.time()
+        total_processing_time = end_time_total - start_time_total
+        logger.info(f"Total processing time: {total_processing_time:.2f} seconds")
+
+        # Prepare custom headers for processing times
+        headers = {
+            "X-Processing-Time-Yaml": str(yaml_conversion_time),
+            "X-Processing-Time-Total": str(total_processing_time)
+        }
+
+        # Add cleanup of temporary files to background tasks
+        if temp_pdf_path and os.path.exists(temp_pdf_path):
+            background_tasks.add_task(os.unlink, temp_pdf_path)
+        # Also clean up the generated YAML files if they are temporary and not needed after PDF generation
+        if resume_path != config.DEFAULT_RESUME_PATH and os.path.exists(resume_path):
+             background_tasks.add_task(os.unlink, resume_path) # Clean up generated YAML
+
+        # Return the PDF as a downloadable file with custom headers
         filename = f"tailored_resume_{template_name}.pdf"
         return FileResponse(
             path=pdf_location,
             filename=filename,
-            media_type="application/pdf"
+            media_type="application/pdf",
+            headers=headers # Pass custom headers
         )
 
     except FileNotFoundError as e:
-        # Cleanup temp files in case of error
         if temp_pdf_path and os.path.exists(temp_pdf_path):
-            os.unlink(temp_pdf_path)
+            background_tasks.add_task(os.unlink, temp_pdf_path)
         raise HTTPException(status_code=404, detail=str(e))
-    
+
     except HTTPException:
-        # Cleanup temp files in case of error
         if temp_pdf_path and os.path.exists(temp_pdf_path):
-            os.unlink(temp_pdf_path)
+            background_tasks.add_task(os.unlink, temp_pdf_path)
         raise
-    
+
     except Exception as e:
-        # Cleanup temp files in case of error
         if temp_pdf_path and os.path.exists(temp_pdf_path):
-            os.unlink(temp_pdf_path)
-        raise HTTPException(status_code=500, detail=f"Failed to process resume: {str(e)}")
+            background_tasks.add_task(os.unlink, temp_pdf_path)
+        # Catch-all for any other unexpected errors
+        logger.error(f"An unhandled error occurred: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to process resume due to an internal server error: {str(e)}")
