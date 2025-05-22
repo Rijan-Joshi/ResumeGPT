@@ -58,9 +58,19 @@ class ResumeImprover:
         self.yaml_loc = None
         self.url = url
         self.job_description = job_description
+        
+        # Cache for API responses to avoid duplicate calls
+        self._api_cache = {}
+        
         self.download_and_parse_job_post(job_description=self.job_description)
         self.resume_location = resume_location or config.DEFAULT_RESUME_PATH
         self._update_resume_fields()
+
+    def _get_cache_key(self, prompt_type: str, section_data: str = None) -> str:
+        """Generate a cache key for API responses based on content hash."""
+        import hashlib
+        content = f"{prompt_type}_{self.job_post_raw}_{section_data or ''}"
+        return hashlib.md5(content.encode()).hexdigest()
 
     def _update_resume_fields(self):
         """Update the resume fields based on the current resume location."""
@@ -84,6 +94,8 @@ class ResumeImprover:
         """
         self.resume_location = new_resume_location
         self._update_resume_fields()
+        # Clear cache when resume changes
+        self._api_cache.clear()
 
     def _extract_html_data(self):
         """Extract text content from HTML, removing all HTML tags.
@@ -208,23 +220,26 @@ class ResumeImprover:
             self.parsed_job, filename=os.path.join(self.job_data_location, "job.yaml")
         )
 
-    def create_draft_tailored_resume(
+    def create_draft_tailored_resume_batch(
         self, auto_open=True, manual_review=True, skip_pdf_create=False
     ):
-        """Run a full review of the resume against the job post.
+        """Run a full review of the resume against the job post using batch processing.
 
         Args:
             auto_open (bool, optional): Whether to automatically open the generated resume. Defaults to True.
             manual_review (bool, optional): Whether to wait for manual review. Defaults to True.
         """
-        config.logger.info("Extracting matched skills...")
-        self.skills = self.extract_matched_skills(verbose=False)
-        config.logger.info("Writing objective...")
-        self.objective = self.write_objective(verbose=False)
-        config.logger.info("Updating bullet points...")
-        self.experiences = self.rewrite_unedited_experiences(verbose=False)
-        config.logger.info("Updating projects...")
-        self.projects = self.rewrite_unedited_projects(verbose=False)
+        config.logger.info("Starting batch processing for resume optimization...")
+        
+        # Process all sections in a single batch API call
+        batch_results = self._process_all_sections_batch()
+        
+        # Extract results from batch response
+        self.skills = batch_results.get('skills', self.skills)
+        self.objective = batch_results.get('objective', self.objective)
+        self.experiences = batch_results.get('experiences', self.experiences)
+        self.projects = batch_results.get('projects', self.projects)
+        
         config.logger.info("Done updating...")
         self.yaml_loc = os.path.join(self.job_data_location, "resume.yaml")
         resume_dict = dict(
@@ -238,38 +253,195 @@ class ResumeImprover:
         )
         utils.write_yaml(resume_dict, filename=self.yaml_loc)
         self.resume_yaml = utils.read_yaml(filename=self.yaml_loc)
+        
         if auto_open:
-            # subprocess.run(config.OPEN_FILE_COMMAND.split(" ") + [self.yaml_loc])
             subprocess.run(f"start {self.yaml_loc}", shell=True)
         while manual_review and utils.read_yaml(filename=self.yaml_loc)["editing"]:
             time.sleep(5)
-        config.logger.info("Saving PDF")
+        config.logger.info("Generating PDF")
         if not skip_pdf_create:
             self.create_pdf(auto_open=auto_open)
 
-    pass
+    def _process_all_sections_batch(self):
+        """Process all resume sections in a single batch API call to minimize API usage."""
+        
+        # Create a combined prompt that handles all sections at once
+        combined_prompt = self._create_combined_prompt()
+        
+        # Use a single LLM call for all processing
+        llm = create_llm(**self.llm_kwargs)
+        
+        # Create structured output for all sections
+        from pydantic import BaseModel, Field
+        from typing import List
+        
+        class SkillCategory(BaseModel):
+            category: str = Field(description="The skill category name")
+            skills: List[str] = Field(description="List of skills in this category")
+        
+        class ExperienceHighlight(BaseModel):
+            company: str = Field(description="Company name")
+            title: str = Field(description="Job title")
+            highlights: List[str] = Field(description="Optimized bullet points")
+        
+        class ProjectHighlight(BaseModel):
+            name: str = Field(description="Project name")
+            highlights: List[str] = Field(description="Optimized bullet points")
+        
+        class BatchResumeOutput(BaseModel):
+            technical_skills: List[str] = Field(description="Technical skills that match the job")
+            non_technical_skills: List[str] = Field(description="Non-technical skills that match the job")
+            objective: str = Field(description="Tailored objective statement")
+            experience_highlights: List[List[str]] = Field(description="Rewritten highlights for each experience")
+            project_highlights: List[List[str]] = Field(description="Rewritten highlights for each project")
+        
+        # Single API call for all sections
+        runnable = combined_prompt | llm.with_structured_output(schema=BatchResumeOutput)
+        
+        # Get all inputs needed
+        chain_inputs = {
+            'job_description': self.job_post_raw,
+            'parsed_job': str(self.parsed_job),
+            'current_skills': chain_formatter('skills', self.skills),
+            'current_experiences': chain_formatter('experience', self.experiences),
+            'current_projects': chain_formatter('projects', self.projects),
+            'basic_info': str(self.basic_info),
+            'education': chain_formatter('education', self.education),
+            'degrees': ', '.join(self.degrees) if self.degrees else '',
+            'num_experiences': len(self.experiences),
+            'num_projects': len(self.projects)
+        }
+        
+        try:
+            result = runnable.invoke(chain_inputs)
+            
+            # Convert the result back to the expected format
+            processed_result = {
+                'skills': [
+                    {'category': 'Technical', 'skills': result.technical_skills},
+                    {'category': 'Non-technical', 'skills': result.non_technical_skills}
+                ],
+                'objective': result.objective,
+                'experiences': [],
+                'projects': []
+            }
+            
+            # Map experience highlights back to original structure
+            for i, exp in enumerate(self.experiences):
+                exp_copy = dict(exp)
+                if i < len(result.experience_highlights):
+                    exp_copy['highlights'] = result.experience_highlights[i]
+                processed_result['experiences'].append(exp_copy)
+            
+            # Map project highlights back to original structure  
+            for i, proj in enumerate(self.projects):
+                proj_copy = dict(proj)
+                if i < len(result.project_highlights):
+                    proj_copy['highlights'] = result.project_highlights[i]
+                processed_result['projects'].append(proj_copy)
+            
+            return processed_result
+            
+        except Exception as e:
+            config.logger.error(f"Batch processing failed: {e}")
+            # Fallback to individual processing with caching
+            return self._process_sections_with_cache()
+
+    def _create_combined_prompt(self):
+        """Create a combined prompt template for batch processing."""
+        
+        combined_template = """
+        You are a professional resume optimizer. Given a job description and current resume sections, 
+        optimize ALL sections simultaneously to match the job requirements.
+        
+        Job Description:
+        {job_description}
+        
+        Parsed Job Requirements:
+        {parsed_job}
+        
+        Current Resume Sections:
+        
+        Basic Info: {basic_info}
+        Education: {education}
+        Degrees: {degrees}
+        
+        Current Skills:
+        {current_skills}
+        
+        Current Experiences ({num_experiences} experiences):
+        {current_experiences}
+        
+        Current Projects ({num_projects} projects):
+        {current_projects}
+        
+        Please provide:
+        1. technical_skills: Array of technical skills that match the job (extract from job description and current skills)
+        2. non_technical_skills: Array of soft skills that match the job (extract from job description and current skills)
+        3. objective: A tailored objective statement for this specific job
+        4. experience_highlights: Array of arrays - for each of the {num_experiences} experiences, provide optimized bullet points
+        5. project_highlights: Array of arrays - for each of the {num_projects} projects, provide optimized bullet points
+        
+        Focus on keywords from the job description and quantifiable achievements.
+        Maintain truthfulness while optimizing for relevance.
+        Ensure the arrays match the exact count of experiences and projects provided.
+        """
+        
+        return ChatPromptTemplate.from_template(combined_template)
+
+    def _process_sections_with_cache(self):
+        """Fallback method using individual API calls with caching."""
+        results = {}
+        
+        # Process with caching to avoid duplicate calls
+        cache_key_skills = self._get_cache_key("skills")
+        if cache_key_skills not in self._api_cache:
+            self._api_cache[cache_key_skills] = self.extract_matched_skills(verbose=False)
+        results['skills'] = self._api_cache[cache_key_skills]
+        
+        cache_key_objective = self._get_cache_key("objective")
+        if cache_key_objective not in self._api_cache:
+            self._api_cache[cache_key_objective] = self.write_objective(verbose=False)
+        results['objective'] = self._api_cache[cache_key_objective]
+        
+        # Process experiences and projects with parallel execution
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            exp_future = executor.submit(self.rewrite_unedited_experiences_cached, verbose=False)
+            proj_future = executor.submit(self.rewrite_unedited_projects_cached, verbose=False)
+            
+            results['experiences'] = exp_future.result()
+            results['projects'] = proj_future.result()
+        
+        return results
+
+    def create_draft_tailored_resume(
+        self, auto_open=True, manual_review=True, skip_pdf_create=False
+    ):
+        """Run a full review of the resume against the job post.
+        
+        This method now uses the optimized batch processing approach.
+        """
+        return self.create_draft_tailored_resume_batch(auto_open, manual_review, skip_pdf_create)
 
     def _create_tailored_resume_in_background(
         self, auto_open=True, manual_review=True, background_runner=None
     ):
-        """Run a full review of the resume against the job post.
-
-        Args:
-            auto_open (bool, optional): Whether to automatically open the generated resume. Defaults to True.
-            manual_review (bool, optional): Whether to wait for manual review. Defaults to True.
-        """
+        """Run a full review of the resume against the job post using optimized processing."""
         if background_runner is not None:
             logger = background_runner.logger
         else:
             logger = config.logger
-        logger.info("Extracting matched skills...")
-        self.skills = self.extract_matched_skills(verbose=False)
-        logger.info("Writing objective...")
-        self.objective = self.write_objective(verbose=False)
-        logger.info("Updating bullet points...")
-        self.experiences = self.rewrite_unedited_experiences(verbose=False)
-        logger.info("Updating projects...")
-        self.projects = self.rewrite_unedited_projects(verbose=False)
+            
+        logger.info("Starting optimized background processing...")
+        
+        # Use batch processing for background jobs too
+        batch_results = self._process_all_sections_batch()
+        
+        self.skills = batch_results.get('skills', self.skills)
+        self.objective = batch_results.get('objective', self.objective)
+        self.experiences = batch_results.get('experiences', self.experiences)
+        self.projects = batch_results.get('projects', self.projects)
+        
         logger.info("Done updating...")
         self.yaml_loc = os.path.join(self.job_data_location, "resume.yaml")
         resume_dict = dict(
@@ -284,16 +456,12 @@ class ResumeImprover:
         utils.write_yaml(resume_dict, filename=self.yaml_loc)
         self.resume_yaml = utils.read_yaml(filename=self.yaml_loc)
 
+    @staticmethod
     def create_draft_tailored_resumes_in_background(background_configs: List[dict]):
         """Run 'create_draft_tailored_resume' for multiple configurations in the background.
 
         Args:
             background_configs (List[dict]): List of configurations for creating draft tailored resumes.
-                Each configuration dictionary should have the following keys:
-                - url (str): The URL of the job posting.
-                - resume_location (str): The file path to the resume to be tailored.
-                - auto_open (bool, optional): Whether to automatically open the generated resume. Defaults to True.
-                - manual_review (bool, optional): Whether to wait for manual review. Defaults to True.
         """
         output = {}
         output["ResumeImprovers"] = []
@@ -305,10 +473,11 @@ class ResumeImprover:
                 resume_improver._create_tailored_resume_in_background(
                     auto_open=background_config.get("auto_open", True),
                     manual_review=background_config.get("manual_review", True),
+                    background_runner=output["background_runner"]
                 )
             except Exception as e:
                 output["background_runner"].logger.error(
-                    f"An error occurred with config {config}: {e}"
+                    f"An error occurred with config {background_config}: {e}"
                 )
 
         for background_config in background_configs:
@@ -367,24 +536,14 @@ class ResumeImprover:
         return result
 
     def _combine_skills_in_category(self, l1: list[str], l2: list[str]):
-        """Combine two lists of skills without duplicating lowercase entries.
-
-        Args:
-            l1 (list[str]): The first list of skills.
-            l2 (list[str]): The second list of skills.
-        """
+        """Combine two lists of skills without duplicating lowercase entries."""
         l1_lower = {i.lower() for i in l1}
         for i in l2:
             if i.lower() not in l1_lower:
                 l1.append(i)
 
     def _combine_skill_lists(self, l1: list[dict], l2: list[dict]):
-        """Combine two lists of skill categories without duplicating lowercase entries.
-
-        Args:
-            l1 (list[dict]): The first list of skill categories.
-            l2 (list[dict]): The second list of skill categories.
-        """
+        """Combine two lists of skill categories without duplicating lowercase entries."""
         l1_categories_lowercase = {s["category"].lower(): i for i, s in enumerate(l1)}
         for s in l2:
             if s["category"].lower() in l1_categories_lowercase:
@@ -395,16 +554,20 @@ class ResumeImprover:
             else:
                 l1.append(s)
 
+    def rewrite_section_cached(self, section: list | str, **chain_kwargs) -> dict:
+        """Rewrite a section of the resume with caching."""
+        section_str = str(section)
+        cache_key = self._get_cache_key("section_highlight", section_str)
+        
+        if cache_key in self._api_cache:
+            return self._api_cache[cache_key]
+        
+        result = self.rewrite_section(section, **chain_kwargs)
+        self._api_cache[cache_key] = result
+        return result
+
     def rewrite_section(self, section: list | str, **chain_kwargs) -> dict:
-        """Rewrite a section of the resume.
-
-        Args:
-            section (list | str): The section to rewrite.
-            **chain_kwargs: Additional keyword arguments for the chain.
-
-        Returns:
-            dict: The rewritten section.
-        """
+        """Rewrite a section of the resume."""
         chain = self._chain_updater(
             Prompts.lookup["SECTION_HIGHLIGHTER"],
             ResumeSectionHighlighterOutput,
@@ -417,48 +580,48 @@ class ResumeImprover:
         )
         return [s["highlight"] for s in section_revised]
 
+    def rewrite_unedited_experiences_cached(self, **chain_kwargs) -> dict:
+        """Rewrite unedited experiences with caching."""
+        cache_key = self._get_cache_key("experiences", str(self.experiences))
+        
+        if cache_key in self._api_cache:
+            return self._api_cache[cache_key]
+        
+        result = self.rewrite_unedited_experiences(**chain_kwargs)
+        self._api_cache[cache_key] = result
+        return result
+
     def rewrite_unedited_experiences(self, **chain_kwargs) -> dict:
-        """Rewrite unedited experiences in the resume.
-
-        Args:
-            **chain_kwargs: Additional keyword arguments for the chain.
-
-        Returns:
-            dict: The rewritten experiences.
-        """
+        """Rewrite unedited experiences in the resume."""
         result = []
         for exp in self.experiences:
             exp = dict(exp)
-            exp["highlights"] = self.rewrite_section(section=exp, **chain_kwargs)
+            exp["highlights"] = self.rewrite_section_cached(section=exp, **chain_kwargs)
             result.append(exp)
         return result
 
+    def rewrite_unedited_projects_cached(self, **chain_kwargs) -> dict:
+        """Rewrite unedited projects with caching."""
+        cache_key = self._get_cache_key("projects", str(self.projects))
+        
+        if cache_key in self._api_cache:
+            return self._api_cache[cache_key]
+        
+        result = self.rewrite_unedited_projects(**chain_kwargs)
+        self._api_cache[cache_key] = result
+        return result
+
     def rewrite_unedited_projects(self, **chain_kwargs) -> dict:
-        """Rewrite unedited projects in the resume.
-
-        Args:
-            **chain_kwargs: Additional keyword arguments for the chain.
-
-        Returns:
-            dict: The rewritten projects.
-        """
+        """Rewrite unedited projects in the resume."""
         result = []
         for exp in self.projects:
             exp = dict(exp)
-            exp["highlights"] = self.rewrite_section(section=exp, **chain_kwargs)
+            exp["highlights"] = self.rewrite_section_cached(section=exp, **chain_kwargs)
             result.append(exp)
         return result
 
     def extract_matched_skills(self, **chain_kwargs) -> dict:
-        """Extract matched skills from the resume and job post.
-
-        Args:
-            **chain_kwargs: Additional keyword arguments for the chain.
-
-        Returns:
-            dict: The extracted skills.
-        """
-
+        """Extract matched skills from the resume and job post."""
         chain = self._chain_updater(
             Prompts.lookup["SKILLS_MATCHER"], ResumeSkillsMatcherOutput, **chain_kwargs
         )
@@ -483,14 +646,7 @@ class ResumeImprover:
         return result
 
     def write_objective(self, **chain_kwargs) -> dict:
-        """Write a objective for the resume.
-
-        Args:
-            **chain_kwargs: Additional keyword arguments for the chain.
-
-        Returns:
-            dict: The written objective.
-        """
+        """Write a objective for the resume."""
         chain = self._chain_updater(
             Prompts.lookup["OBJECTIVE_WRITER"], ResumeSummarizerOutput, **chain_kwargs
         )
@@ -502,14 +658,7 @@ class ResumeImprover:
         return objective["final_answer"]
 
     def suggest_improvements(self, **chain_kwargs) -> dict:
-        """Suggest improvements for the resume.
-
-        Args:
-            **chain_kwargs: Additional keyword arguments for the chain.
-
-        Returns:
-            dict: The suggested improvements.
-        """
+        """Suggest improvements for the resume."""
         chain = self._chain_updater(
             Prompts.lookup["IMPROVER"], ResumeImproverOutput, **chain_kwargs
         )
@@ -520,11 +669,7 @@ class ResumeImprover:
         return improvements["final_answer"]
 
     def finalize(self) -> dict:
-        """Finalize the resume data.
-
-        Returns:
-            dict: The finalized resume data.
-        """
+        """Finalize the resume data."""
         return dict(
             basic=self.basic_info,
             objective=self.objective,
@@ -535,14 +680,7 @@ class ResumeImprover:
         )
 
     def create_pdf(self, auto_open=True):
-        """Create a PDF of the resume.
-
-        Args:
-            auto_open (bool, optional): Whether to automatically open the generated PDF. Defaults to True.
-
-        Returns:
-            str: The file path to the generated PDF.
-        """
+        """Create a PDF of the resume."""
         pdf_generator = ResumePDFGenerator()
         pdf_location = pdf_generator.generate_resume(
             job_data_location=self.job_data_location,
