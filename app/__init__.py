@@ -1,2 +1,2 @@
-from .streamlit_ui import *
+from ..streamlit_ui import *
 from .app import *
